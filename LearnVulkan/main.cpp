@@ -8,6 +8,9 @@
 
 #include <iostream>
 
+#include "startup.h"
+
+#ifdef EnvironmentSet
 int main()
 {
 	glfwInit();
@@ -24,7 +27,7 @@ int main()
 	glm::vec4 vec;
 	auto test = matrix * vec;
 
-	while(!glfwWindowShouldClose(window))
+	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 	}
@@ -35,3 +38,5 @@ int main()
 
 	return 0;
 }
+#else
+#endif
