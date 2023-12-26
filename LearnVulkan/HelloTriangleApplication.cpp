@@ -59,6 +59,19 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	}
 }
 
+/**
+ * \brief 队列族的索引
+ */
+struct QueueFamilyIndices
+{
+	int m_graphicsFamily = -1;
+
+	bool isComplete()
+	{
+		return m_graphicsFamily >= 0;
+	}
+};
+
 #ifdef HelloTriangle
 class HelloTriangleApplication
 {
@@ -77,6 +90,8 @@ private:
 	VkInstance m_instance;
 
 	VkDebugUtilsMessengerEXT m_callback;
+
+	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 
 	/**
 	 * \brief 初始化窗口
@@ -99,6 +114,7 @@ private:
 	{
 		createInstance();
 		setupDebugCallback();
+		pickPhysicalDevice();
 	}
 
 	/**
@@ -257,6 +273,88 @@ private:
 		{
 			throw std::runtime_error("failed to set up debug callback!");
 		}
+	}
+
+	/**
+	 * \brief 选择一个物理设备（显卡）
+	 */
+	void pickPhysicalDevice()
+	{
+		// 请求显卡的数量
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
+
+		if(deviceCount == 0)
+		{
+			throw std::runtime_error("failed to find GPUs with Vulkan support!");
+		}
+
+		// 分配数组来存储VkPhysicalDevice对象
+		std::vector<VkPhysicalDevice> devices(deviceCount);
+		vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
+
+		// 选择第一个满足需求的设备
+		for(const auto& device : devices)
+		{
+			if(isDeviceSuitable(device))
+			{
+				m_physicalDevice = device;
+				break;
+			}
+		}
+
+		if(m_physicalDevice == VK_NULL_HANDLE)
+		{
+			throw std::runtime_error("failed to find a suitable GPU!");
+		}
+	}
+
+	/**
+	 * \brief 设备是否满足需求
+	 * \param device 
+	 * \return 
+	 */
+	bool isDeviceSuitable(VkPhysicalDevice device)
+	{
+		QueueFamilyIndices indices = findQueueFamilies(device);
+
+		return indices.isComplete();
+	}
+
+	/**
+	 * \brief 寻找满足条件的队列族
+	 * \param device 
+	 * \return 
+	 */
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
+	{
+		QueueFamilyIndices indices;
+
+		// 获取设备的队列族个数
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+		// 分配数组存储队列族的VkQueueFamilyProperties对象
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+		int i = 0;
+		for(const auto& queueFamily : queueFamilies)
+		{
+			if(queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+			{
+				indices.m_graphicsFamily = i;
+			}
+
+			if(indices.isComplete())
+			{
+				break;
+			}
+
+			i++;
+		}
+
+		return indices;
 	}
 
 	/**
