@@ -85,13 +85,23 @@ public:
 	}
 
 private:
+	// 窗口句柄
 	GLFWwindow* m_window;
 
+	// Vulkan实例
 	VkInstance m_instance;
 
+	// Debug回调
 	VkDebugUtilsMessengerEXT m_callback;
 
+	// 物理设备
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
+
+	// 逻辑设备
+	VkDevice m_device;
+
+	// 队列句柄
+	VkQueue m_graphicsQueue;
 
 	/**
 	 * \brief 初始化窗口
@@ -115,6 +125,7 @@ private:
 		createInstance();
 		setupDebugCallback();
 		pickPhysicalDevice();
+		createLogicalDevice();
 	}
 
 	/**
@@ -133,6 +144,8 @@ private:
 	 */
 	void cleanup()
 	{
+		vkDestroyDevice(m_device, nullptr);
+
 		if (enableValidationLayers)
 		{
 			DestroyDebugUtilsMessengerEXT(m_instance, m_callback, nullptr);
@@ -307,6 +320,54 @@ private:
 		{
 			throw std::runtime_error("failed to find a suitable GPU!");
 		}
+	}
+
+	/**
+	 * \brief 创建逻辑设备
+	 */
+	void createLogicalDevice()
+	{
+		QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
+
+		// 指定要创建的队列
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.m_graphicsFamily;
+		queueCreateInfo.queueCount = 1;
+
+		float queuePriority = 1.0f;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+
+		// 指定使用的设备特性
+		VkPhysicalDeviceFeatures deviceFeatures = {};
+
+		// 创建逻辑设备
+		VkDeviceCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		createInfo.pQueueCreateInfos = &queueCreateInfo;
+		createInfo.queueCreateInfoCount = 1;
+
+		createInfo.pEnabledFeatures = &deviceFeatures;
+
+		createInfo.enabledExtensionCount = 0;
+
+		if(enableValidationLayers)
+		{
+			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			createInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		else
+		{
+			createInfo.enabledLayerCount = 0;
+		}
+
+		if(vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create logical device!");
+		}
+
+		// 获取队列句柄
+		vkGetDeviceQueue(m_device, indices.m_graphicsFamily, 0, &m_graphicsQueue);
 	}
 
 	/**
