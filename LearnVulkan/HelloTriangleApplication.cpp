@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <functional>
 #include <cstdlib>
+#include <set>
 #include <vector>
 
 #include "startup.h"
@@ -64,11 +65,15 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
  */
 struct QueueFamilyIndices
 {
+	// 支持绘制指令的队列族索引
 	int m_graphicsFamily = -1;
+
+	// 支持表现的队列族索引
+	int m_presentFamily = -1;
 
 	bool isComplete()
 	{
-		return m_graphicsFamily >= 0;
+		return m_graphicsFamily >= 0 && m_presentFamily >= 0;
 	}
 };
 
@@ -100,8 +105,14 @@ private:
 	// 逻辑设备
 	VkDevice m_device;
 
-	// 队列句柄
+	// 图形绘制队列句柄
 	VkQueue m_graphicsQueue;
+
+	// 窗口表面
+	VkSurfaceKHR m_surface;
+
+	// 表现队列句柄
+	VkQueue m_presentQueue;
 
 	/**
 	 * \brief 初始化窗口
@@ -124,6 +135,7 @@ private:
 	{
 		createInstance();
 		setupDebugCallback();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
@@ -151,6 +163,7 @@ private:
 			DestroyDebugUtilsMessengerEXT(m_instance, m_callback, nullptr);
 		}
 
+		vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 		vkDestroyInstance(m_instance, nullptr);
 
 		glfwDestroyWindow(m_window);
@@ -289,6 +302,17 @@ private:
 	}
 
 	/**
+	 * \brief 创建窗口表面
+	 */
+	void createSurface()
+	{
+		if(glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create window surface!");
+		}
+	}
+
+	/**
 	 * \brief 选择一个物理设备（显卡）
 	 */
 	void pickPhysicalDevice()
@@ -329,14 +353,21 @@ private:
 	{
 		QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
 
-		// 指定要创建的队列
-		VkDeviceQueueCreateInfo queueCreateInfo = {};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = indices.m_graphicsFamily;
-		queueCreateInfo.queueCount = 1;
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		std::set<int> uniqueQueueFamilies = { indices.m_graphicsFamily, indices.m_presentFamily };
 
 		float queuePriority = 1.0f;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		for(int queueFamily : uniqueQueueFamilies)
+		{
+			// 指定要创建的队列
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+			queueCreateInfos.push_back(queueCreateInfo);
+
+		}
 
 		// 指定使用的设备特性
 		VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -344,8 +375,8 @@ private:
 		// 创建逻辑设备
 		VkDeviceCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		createInfo.pQueueCreateInfos = &queueCreateInfo;
-		createInfo.queueCreateInfoCount = 1;
+		createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+		createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
 		createInfo.pEnabledFeatures = &deviceFeatures;
 
@@ -368,6 +399,7 @@ private:
 
 		// 获取队列句柄
 		vkGetDeviceQueue(m_device, indices.m_graphicsFamily, 0, &m_graphicsQueue);
+		vkGetDeviceQueue(m_device, indices.m_presentFamily, 0, &m_presentQueue);
 	}
 
 	/**
@@ -402,9 +434,20 @@ private:
 		int i = 0;
 		for(const auto& queueFamily : queueFamilies)
 		{
+			// 确定支持绘制指令的队列族索引
 			if(queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
 			{
 				indices.m_graphicsFamily = i;
+			}
+
+
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &presentSupport);
+
+			// 确定支持表现的队列族索引
+			if(queueFamily.queueCount > 0 && presentSupport)
+			{
+				indices.m_presentFamily = i;
 			}
 
 			if(indices.isComplete())
