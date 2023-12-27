@@ -15,6 +15,8 @@ const uint32_t HEIGHT = 600;
 
 const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 
+const std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -77,6 +79,21 @@ struct QueueFamilyIndices
 	}
 };
 
+/**
+ * \brief 交换链的支持细节
+ */
+struct SwapChainSupportDetails
+{
+	// 基础表面特性
+	VkSurfaceCapabilitiesKHR m_capabilities;
+
+	// 表面格式
+	std::vector<VkSurfaceFormatKHR> m_formats;
+
+	// 可用的呈现模式
+	std::vector<VkPresentModeKHR> m_presentModes;
+};
+
 #ifdef HelloTriangle
 class HelloTriangleApplication
 {
@@ -114,6 +131,18 @@ private:
 	// 表现队列句柄
 	VkQueue m_presentQueue;
 
+	// 交换链句柄
+	VkSwapchainKHR m_swapChain;
+
+	// 交换链图像
+	std::vector<VkImage> m_swapChainImages;
+
+	// 交换链图像格式
+	VkFormat m_swapChainImageFormat;
+
+	// 交换链范围
+	VkExtent2D m_swapChainExtent;
+
 	/**
 	 * \brief 初始化窗口
 	 */
@@ -138,6 +167,7 @@ private:
 		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
+		createSwapChain();
 	}
 
 	/**
@@ -156,6 +186,8 @@ private:
 	 */
 	void cleanup()
 	{
+		vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
+
 		vkDestroyDevice(m_device, nullptr);
 
 		if (enableValidationLayers)
@@ -380,7 +412,8 @@ private:
 
 		createInfo.pEnabledFeatures = &deviceFeatures;
 
-		createInfo.enabledExtensionCount = 0;
+		createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+		createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
 		if(enableValidationLayers)
 		{
@@ -403,6 +436,72 @@ private:
 	}
 
 	/**
+	 * \brief 创建交换链
+	 */
+	void createSwapChain()
+	{
+		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(m_physicalDevice);
+
+		VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.m_formats);
+		VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.m_presentModes);
+		VkExtent2D extent = chooseSwapExtent(swapChainSupport.m_capabilities);
+
+		// 设置交换链队列可以容纳的图像个数
+		uint32_t imageCount = swapChainSupport.m_capabilities.minImageCount + 1;
+		// maxImageCount的值为0表明，只要内存满足，可以使用任意数量的图像
+		if(swapChainSupport.m_capabilities.maxImageCount > 0 &&  imageCount > swapChainSupport.m_capabilities.maxImageCount)
+		{
+			imageCount = swapChainSupport.m_capabilities.maxImageCount;
+		}
+
+		VkSwapchainCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+		createInfo.surface = m_surface;
+
+		createInfo.minImageCount = imageCount;
+		createInfo.imageFormat = surfaceFormat.format;
+		createInfo.imageColorSpace = surfaceFormat.colorSpace;
+		createInfo.imageExtent = extent;
+		createInfo.imageArrayLayers = 1;
+		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+		QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
+		uint32_t queueFamilyIndices[] = { (uint32_t)indices.m_graphicsFamily, (uint32_t)indices.m_presentFamily };
+
+		if(indices.m_graphicsFamily != indices.m_presentFamily)
+		{
+			createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+			createInfo.queueFamilyIndexCount = 2;
+			createInfo.pQueueFamilyIndices = queueFamilyIndices;
+		}
+		else
+		{
+			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			createInfo.queueFamilyIndexCount = 0;	// Optional
+			createInfo.pQueueFamilyIndices = nullptr;	// Optional
+		}
+
+		createInfo.preTransform = swapChainSupport.m_capabilities.currentTransform;
+		createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		createInfo.presentMode = presentMode;
+		createInfo.clipped = VK_TRUE;
+		createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+		if(vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapChain) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create swap chain!");
+		}
+
+		vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, nullptr);
+		m_swapChainImages.resize(imageCount);
+		vkGetSwapchainImagesKHR(m_device, m_swapChain, &imageCount, m_swapChainImages.data());
+
+		m_swapChainImageFormat = surfaceFormat.format;
+		m_swapChainExtent = extent;
+
+	}
+
+	/**
 	 * \brief 设备是否满足需求
 	 * \param device 
 	 * \return 
@@ -411,7 +510,41 @@ private:
 	{
 		QueueFamilyIndices indices = findQueueFamilies(device);
 
-		return indices.isComplete();
+		bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+		// 这里简单处理，只需交换链支持一种图像格式和一种支持我们的窗口表面的呈现模式即可
+		bool swapChainAdequate = false;
+		if(extensionsSupported)
+		{
+			SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+			swapChainAdequate = !swapChainSupport.m_formats.empty() && !swapChainSupport.m_presentModes.empty();
+		}
+
+		return indices.isComplete() && extensionsSupported && swapChainAdequate;
+	}
+
+	/**
+	 * \brief 检查设备扩展是否被支持
+	 * \param device 
+	 * \return 
+	 */
+	bool checkDeviceExtensionSupport(VkPhysicalDevice device)
+	{
+		// 构建当前可用的设备扩展列表
+		uint32_t extensionCount;
+		vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+		std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+		vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+		// 将集合中的扩展剔除，如果集合中的元素为0，说明所需的扩展全部都被满足
+		std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+		for(const auto& extension : availableExtensions)
+		{
+			requiredExtensions.erase(extension.extensionName);
+		}
+
+		return requiredExtensions.empty();
 	}
 
 	/**
@@ -459,6 +592,112 @@ private:
 		}
 
 		return indices;
+	}
+
+	/**
+	 * \brief 查询交换链是否支持
+	 * \param device 
+	 * \return 
+	 */
+	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
+	{
+		SwapChainSupportDetails details;
+
+		// 查询基础表面特性
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface, &details.m_capabilities);
+
+		// 查询表面支持的格式
+		uint32_t formatCount;
+		vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &formatCount, nullptr);
+
+		if(formatCount != 0)
+		{
+			details.m_formats.resize(formatCount);
+			vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &formatCount, details.m_formats.data());
+		}
+
+		// 查询支持的呈现格式
+		uint32_t presentModeCount;
+		vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, nullptr);
+
+		if(presentModeCount != 0)
+		{
+			details.m_presentModes.resize(presentModeCount);
+			vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, details.m_presentModes.data());
+		}
+
+		return details;
+	}
+
+	/**
+	 * \brief 选择合适的表面格式
+	 * \param availableFormats 
+	 * \return 
+	 */
+	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats)
+	{
+		// 如果表面没有自己的首选格式，则返回设定的格式
+		if(availableFormats.size() == 1 && availableFormats[0].format == VK_FORMAT_UNDEFINED)
+		{
+			return { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+		}
+
+		// 如果是一个格式列表，则检查我们想要的设定的格式是否存在于列表中
+		for(const auto& availableFormat : availableFormats)
+		{
+			if(availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+			{
+				return availableFormat;
+			}
+		}
+	}
+
+	/**
+	 * \brief 选择最佳的可用呈现模式
+	 * \param availablePresentModes 
+	 * \return 
+	 */
+	VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> availablePresentModes)
+	{
+		// 设置一种通用模式
+		VkPresentModeKHR bestMode = VK_PRESENT_MODE_FIFO_KHR;
+
+		// 优先使用三倍缓冲模式
+		for(const auto& availablePresentMode : availablePresentModes)
+		{
+			if(availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+			{
+				return availablePresentMode;
+			}
+			else if(availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+			{
+				bestMode = availablePresentMode;
+			}
+		}
+
+		return bestMode;
+	}
+
+	/**
+	 * \brief 选择交换范围
+	 * \param capabilities 
+	 * \return 
+	 */
+	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+	{
+		if(capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+		{
+			return capabilities.currentExtent;
+		}
+		else
+		{
+			VkExtent2D actualExtent = { WIDTH, HEIGHT };
+
+			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+			return actualExtent;
+		}
 	}
 
 	/**
