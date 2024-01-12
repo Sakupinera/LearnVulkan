@@ -143,6 +143,9 @@ private:
 	// 交换链范围
 	VkExtent2D m_swapChainExtent;
 
+	// 图像视图
+	std::vector<VkImageView> m_swapChainImageViews;
+
 	/**
 	 * \brief 初始化窗口
 	 */
@@ -168,6 +171,7 @@ private:
 		pickPhysicalDevice();
 		createLogicalDevice();
 		createSwapChain();
+		createImageViews();
 	}
 
 	/**
@@ -186,6 +190,11 @@ private:
 	 */
 	void cleanup()
 	{
+		for(auto imageView : m_swapChainImageViews)
+		{
+			vkDestroyImageView(m_device, imageView, nullptr);
+		}
+
 		vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
 
 		vkDestroyDevice(m_device, nullptr);
@@ -499,6 +508,46 @@ private:
 		m_swapChainImageFormat = surfaceFormat.format;
 		m_swapChainExtent = extent;
 
+	}
+
+	/**
+	 * \brief 创建图像视图
+	 */
+	void createImageViews()
+	{
+		// 分配空间类存储图像视图
+		m_swapChainImageViews.resize(m_swapChainImages.size());
+
+		// 遍历所有交换链图像，创建图像视图
+		for(size_t i = 0; i < m_swapChainImages.size(); i++)
+		{
+			VkImageViewCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			createInfo.image = m_swapChainImages[i];
+
+			// 指定图像数据的解释方式
+			createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			createInfo.format = m_swapChainImageFormat;
+
+			// 指定图像颜色通道的映射
+			createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+			// 指定图像的用途和图像的哪一部分可以被访问
+			createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			createInfo.subresourceRange.baseMipLevel = 0;
+			createInfo.subresourceRange.levelCount = 1;
+			createInfo.subresourceRange.baseArrayLayer = 0;
+			createInfo.subresourceRange.layerCount = 1;
+
+			// 创建图像视图
+			if(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapChainImageViews[i]) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create image views!");
+			}
+		}
 	}
 
 	/**
