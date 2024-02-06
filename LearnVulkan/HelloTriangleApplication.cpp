@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <set>
 #include <vector>
+#include <fstream>
 
 #include "startup.h"
 
@@ -172,6 +173,7 @@ private:
 		createLogicalDevice();
 		createSwapChain();
 		createImageViews();
+		createGraphicsPipeline();
 	}
 
 	/**
@@ -551,6 +553,35 @@ private:
 	}
 
 	/**
+	 * \brief 创建图形管线
+	 */
+	void createGraphicsPipeline()
+	{
+		auto vertShaderCode = readFile("shaders/vert.spv");
+		auto fragShaderCode = readFile("shaders/frag.spv");
+		
+		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+		VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		vertShaderStageInfo.module = vertShaderModule;
+		vertShaderStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragShaderStageInfo.module = fragShaderModule;
+		fragShaderStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+		vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
+		vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
+	}
+
+	/**
 	 * \brief 设备是否满足需求
 	 * \param device 
 	 * \return 
@@ -747,6 +778,56 @@ private:
 
 			return actualExtent;
 		}
+	}
+
+	/**
+	 * \brief 创建VkShaderModule对象
+	 * \param code 
+	 * \return 
+	 */
+	VkShaderModule createShaderModule(const std::vector<char>& code)
+	{
+		// 指定VkShaderModuleCreateInfo存储字节码的数组和数组长度
+		VkShaderModuleCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		createInfo.codeSize = code.size();
+		createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+		// 创建VkShaderModule对象
+		VkShaderModule shaderModule;
+		if(vkCreateShaderModule(m_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create shader module!");
+		}
+
+		return shaderModule;
+	}
+
+	/**
+	 * \brief 用于载入二进制文件的辅助函数
+	 * \param filename 
+	 * \return 
+	 */
+	static std::vector<char> readFile(const std::string& filename)
+	{
+		std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+		if(!file.is_open())
+		{
+			throw std::runtime_error("failed to open file!");
+		}
+
+		// 根据读取位置确定文件大小，分配足够的数组空间来容纳数据
+		size_t fileSize = (size_t)file.tellg();
+		std::vector<char> buffer(fileSize);
+
+		// 读取整个文件
+		file.seekg(0);
+		file.read(buffer.data(), fileSize);
+
+		file.close();
+
+		return buffer;
 	}
 
 	/**

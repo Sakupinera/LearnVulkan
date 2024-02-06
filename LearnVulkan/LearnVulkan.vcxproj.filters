@@ -19,6 +19,9 @@
     <Filter Include="Source Files\EnvironmentSet">
       <UniqueIdentifier>{c0838dd0-8980-475e-a347-d61525de340f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\ShaderBase">
+      <UniqueIdentifier>{e3b5e7be-6b8b-44fc-b111-ff21f73ccfaf}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="HelloTriangleApplication.cpp">
@@ -32,5 +35,16 @@
     <ClInclude Include="startup.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shader.vert">
+      <Filter>Source Files\ShaderBase</Filter>
+    </None>
+    <None Include="shader.frag">
+      <Filter>Source Files\ShaderBase</Filter>
+    </None>
+    <None Include="compile.bat">
+      <Filter>Source Files\ShaderBase</Filter>
+    </None>
   </ItemGroup>
 </Project>
